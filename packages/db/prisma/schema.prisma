@@ -80,6 +80,8 @@ model Repo {
 
   searchContexts SearchContext[]
 
+  fileCodeRankScores FileCodeRankScore[]
+
   @@unique([external_id, external_codeHostUrl, orgId])
   @@index([orgId])
   @@index([indexedAt])
@@ -359,6 +361,18 @@ model Audit {
   @@index([orgId, timestamp, action, actorId], map: "idx_audit_core_actions_full")
   // Fast path for analytics queries for a specific user
   @@index([actorId, timestamp], map: "idx_audit_actor_time_full")
+}
+
+model FileCodeRankScore {
+  id       Int    @id @default(autoincrement())
+  repoId   Int
+  filePath String
+  score    Float
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, filePath])
+  @@index([repoId])
 }
 
 // @see : https://authjs.dev/concepts/database-models#user

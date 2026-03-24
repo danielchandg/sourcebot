@@ -81,6 +81,10 @@ export const FileMatchContainer = ({
         return repoInfo[file.repositoryId];
     }, [repoInfo, file.repositoryId]);
 
+    // repo can be briefly undefined during search transitions (repoInfo resets
+    // before rankedFiles does). Render nothing rather than crash.
+    if (!repo) return null;
+
     return (
         <div>
             {/* Title */}

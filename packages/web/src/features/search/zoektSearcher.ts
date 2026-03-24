@@ -36,6 +36,7 @@ export const createZoektSearchRequest = async ({
         matches: number,
         contextLines?: number,
         whole?: boolean,
+        sortBy?: string,
     };
     // Allows the caller to scope the search to a specific set of repositories.
     repoSearchScope?: string[];
@@ -68,6 +69,7 @@ export const createZoektSearchRequest = async ({
         },
         opts: {
             chunk_matches: true,
+            use_bm25_scoring: options.sortBy === 'bm25',
             // @note: Zoekt has several different ways to limit a given search. The two that
             // we care about are `MaxMatchDisplayCount` and `TotalMaxMatchCount`:
             // - `MaxMatchDisplayCount` truncates the number of matches AFTER performing

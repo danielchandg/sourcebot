@@ -27,6 +27,7 @@ const createCacheKey = (params: SearchRequest): string => {
         whole: params.whole,
         isRegexEnabled: params.isRegexEnabled,
         isCaseSensitivityEnabled: params.isCaseSensitivityEnabled,
+        sortBy: params.sortBy,
     });
 };
 
@@ -34,7 +35,7 @@ const isCacheValid = (entry: CacheEntry): boolean => {
     return Date.now() - entry.timestamp < CACHE_TTL;
 };
 
-export const useStreamedSearch = ({ query, matches, contextLines, whole, isRegexEnabled, isCaseSensitivityEnabled }: SearchRequest) => {
+export const useStreamedSearch = ({ query, matches, contextLines, whole, isRegexEnabled, isCaseSensitivityEnabled, sortBy }: SearchRequest) => {
     const [state, setState] = useState<{
         isStreaming: boolean,
         isExhaustive: boolean,
@@ -86,6 +87,7 @@ export const useStreamedSearch = ({ query, matches, contextLines, whole, isRegex
                 whole,
                 isRegexEnabled,
                 isCaseSensitivityEnabled,
+                sortBy,
             });
 
             // Check if we have a valid cached result. If so, use it.
@@ -130,6 +132,7 @@ export const useStreamedSearch = ({ query, matches, contextLines, whole, isRegex
                         whole,
                         isRegexEnabled,
                         isCaseSensitivityEnabled,
+                        sortBy,
                     } satisfies SearchRequest),
                     signal: abortControllerRef.current.signal,
                 });
@@ -279,6 +282,7 @@ export const useStreamedSearch = ({ query, matches, contextLines, whole, isRegex
         whole,
         isRegexEnabled,
         isCaseSensitivityEnabled,
+        sortBy,
         cancel,
     ]);
 

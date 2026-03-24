@@ -9,9 +9,11 @@ import {
     ResizablePanel,
     ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RepositoryInfo, SearchResultFile, SearchStats } from "@/features/search";
+import { SortBy } from "@/features/search/types";
 import useCaptureEvent from "@/hooks/useCaptureEvent";
 import { useDomain } from "@/hooks/useDomain";
 import { useNonEmptyQueryParam } from "@/hooks/useNonEmptyQueryParam";
@@ -41,6 +43,7 @@ interface SearchResultsPageProps {
     defaultMaxMatchCount: number;
     isRegexEnabled: boolean;
     isCaseSensitivityEnabled: boolean;
+    sortBy: SortBy;
     session: Session | null;
     isSearchAssistSupported: boolean;
 }
@@ -50,6 +53,7 @@ export const SearchResultsPage = ({
     defaultMaxMatchCount,
     isRegexEnabled,
     isCaseSensitivityEnabled,
+    sortBy,
     session,
     isSearchAssistSupported,
 }: SearchResultsPageProps) => {
@@ -80,6 +84,8 @@ export const SearchResultsPage = ({
         whole: false,
         isRegexEnabled,
         isCaseSensitivityEnabled,
+        // BM25 is applied at the Zoekt level; other sorts are post-processed client-side
+        sortBy: sortBy === 'bm25' ? 'bm25' : 'default',
     });
 
     useEffect(() => {
@@ -167,11 +173,22 @@ export const SearchResultsPage = ({
             [SearchQueryParams.matches, `${maxMatchCount * 2}`],
             [SearchQueryParams.isRegexEnabled, isRegexEnabled ? "true" : null],
             [SearchQueryParams.isCaseSensitivityEnabled, isCaseSensitivityEnabled ? "true" : null],
+            [SearchQueryParams.sortBy, sortBy !== 'default' ? sortBy : null],
+        )
+        router.push(url);
+    }, [maxMatchCount, router, searchQuery, domain, isRegexEnabled, isCaseSensitivityEnabled, sortBy]);
+
+    const onSortByChange = useCallback((newSortBy: SortBy) => {
+        const url = createPathWithQueryParams(`/${domain}/search`,
+            [SearchQueryParams.query, searchQuery],
+            [SearchQueryParams.matches, `${maxMatchCount}`],
+            [SearchQueryParams.isRegexEnabled, isRegexEnabled ? "true" : null],
+            [SearchQueryParams.isCaseSensitivityEnabled, isCaseSensitivityEnabled ? "true" : null],
+            [SearchQueryParams.sortBy, newSortBy !== 'default' ? newSortBy : null],
         )
         router.push(url);
     }, [maxMatchCount, router, searchQuery, domain, isRegexEnabled, isCaseSensitivityEnabled]);
 
-    
     return (
         <div className="flex flex-col h-screen overflow-clip">
             {/* TopBar */}
@@ -208,11 +225,15 @@ export const SearchResultsPage = ({
                     searchStats={stats}
                     isMoreResultsButtonVisible={!isExhaustive}
                     isBranchFilteringEnabled={isBranchFilteringEnabled}
+                    sortBy={sortBy}
+                    onSortByChange={onSortByChange}
+                    searchQuery={searchQuery}
                 />
             )}
         </div>
     );
 }
+
 
 interface PanelGroupProps {
     fileMatches: SearchResultFile[];
@@ -224,7 +245,18 @@ interface PanelGroupProps {
     searchDurationMs: number;
     numMatches: number;
     searchStats?: SearchStats;
+    sortBy: SortBy;
+    onSortByChange: (sortBy: SortBy) => void;
+    searchQuery: string;
 }
+
+const SORT_BY_LABELS: Record<SortBy, string> = {
+    'default': 'Default',
+    'bm25': 'BM25',
+    'github-popularity': 'GitHub Popularity',
+    'pagerank': 'PageRank',
+    'llm': 'LLM Reranking',
+};
 
 const PanelGroup = ({
     fileMatches,
@@ -236,14 +268,25 @@ const PanelGroup = ({
     searchDurationMs: _searchDurationMs,
     numMatches,
     searchStats,
+    sortBy,
+    onSortByChange,
+    searchQuery,
 }: PanelGroupProps) => {
     const [previewedFile, setPreviewedFile] = useState<SearchResultFile | undefined>(undefined);
     const filteredFileMatches = useFilteredMatches(fileMatches);
     const filterPanelRef = useRef<ImperativePanelHandle>(null);
     const searchResultsPanelRef = useRef<SearchResultsPanelHandle>(null);
     const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
-
     const [isFilterPanelCollapsed, setIsFilterPanelCollapsed] = useLocalStorage('isFilterPanelCollapsed', false);
+
+    // State for post-processed (reranked) results
+    const [rankedFiles, setRankedFiles] = useState<SearchResultFile[]>([]);
+    const [isReranking, setIsReranking] = useState(false);
+
+    // Ref so the reranking effect can read the latest filtered results
+    // without depending on them (which would cause re-fire loops).
+    const filteredFileMatchesRef = useRef<SearchResultFile[]>([]);
+    filteredFileMatchesRef.current = filteredFileMatches;
 
     useHotkeys("mod+b", () => {
         if (isFilterPanelCollapsed) {
@@ -260,6 +303,114 @@ const PanelGroup = ({
     const searchDurationMs = useMemo(() => {
         return Math.round(_searchDurationMs);
     }, [_searchDurationMs]);
+
+    // Effect 1: During streaming (or on reset), mirror filtered results directly
+    // into rankedFiles so the user sees results as they arrive.
+    // Safe to re-run on every filteredFileMatches change because it never
+    // triggers async work or additional state updates that feed back into
+    // filteredFileMatches.
+    useEffect(() => {
+        if (isStreaming || filteredFileMatches.length === 0) {
+            setRankedFiles(filteredFileMatches);
+        }
+    }, [filteredFileMatches, isStreaming]);
+
+    // Effect 2: Once streaming finishes, apply the selected reranking method.
+    // Intentionally does NOT depend on filteredFileMatches — it reads the
+    // latest value via filteredFileMatchesRef instead. This prevents the
+    // setIsReranking(true) / setRankedFiles(...) calls inside from creating
+    // a re-render → new array reference → re-fire loop.
+    useEffect(() => {
+        if (isStreaming) return;
+
+        const files = filteredFileMatchesRef.current;
+        if (files.length === 0) return;
+
+        if (sortBy === 'default' || sortBy === 'bm25') {
+            setRankedFiles(files);
+            return;
+        }
+
+        const abortController = new AbortController();
+
+        if (sortBy === 'pagerank') {
+            setIsReranking(true);
+
+            fetch('/api/coderank_scores', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: files.map(f => ({ repoId: f.repositoryId, filePath: f.fileName.text })) }),
+                signal: abortController.signal,
+            })
+                .then(r => r.json() as Promise<Record<string, number>>)
+                .then(scoreMap => {
+                    const sorted = [...files].sort((a, b) => {
+                        const aScore = scoreMap[`${a.repositoryId}:${a.fileName.text}`] ?? 0;
+                        const bScore = scoreMap[`${b.repositoryId}:${b.fileName.text}`] ?? 0;
+                        return bScore - aScore;
+                    });
+                    setRankedFiles(sorted);
+                })
+                .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
+                .finally(() => setIsReranking(false));
+        } else if (sortBy === 'github-popularity') {
+            const uniqueRepos = [...new Set(files.map(f => f.repository))];
+            setIsReranking(true);
+
+            fetch('/api/repo_stars', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ repoNames: uniqueRepos }),
+                signal: abortController.signal,
+            })
+                .then(r => r.json() as Promise<Record<string, { stars: number; forks: number }>>)
+                .then(starMap => {
+                    const sorted = [...files].sort((a, b) => {
+                        const aStars = starMap[a.repository]?.stars ?? 0;
+                        const bStars = starMap[b.repository]?.stars ?? 0;
+                        if (bStars !== aStars) return bStars - aStars;
+                        const aMatches = a.chunks.reduce((s, c) => s + c.matchRanges.length, 0);
+                        const bMatches = b.chunks.reduce((s, c) => s + c.matchRanges.length, 0);
+                        return bMatches - aMatches;
+                    });
+                    setRankedFiles(sorted);
+                })
+                .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
+                .finally(() => setIsReranking(false));
+        } else if (sortBy === 'llm') {
+            const TOP_K = 20;
+            const topFiles = files.slice(0, TOP_K);
+            const restFiles = files.slice(TOP_K);
+
+            setIsReranking(true);
+
+            const snippets = topFiles.map(f => ({
+                repository: f.repository,
+                fileName: f.fileName.text,
+                language: f.language,
+                snippet: f.chunks[0]?.content ?? '',
+            }));
+
+            fetch('/api/rerank', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: searchQuery, files: snippets }),
+                signal: abortController.signal,
+            })
+                .then(r => r.json() as Promise<{ rankedIndices: number[] }>)
+                .then(({ rankedIndices }) => {
+                    const reranked = rankedIndices.map(i => topFiles[i]);
+                    setRankedFiles([...reranked, ...restFiles]);
+                })
+                .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
+                .finally(() => setIsReranking(false));
+        } else {
+            setRankedFiles(files);
+        }
+
+        return () => { abortController.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isStreaming, sortBy, searchQuery]);
 
     return (
         <ResizablePanelGroup
@@ -321,7 +472,7 @@ const PanelGroup = ({
                 order={2}
             >
                 <div className="flex h-full flex-col">
-                    <div className="py-1 px-2 flex flex-row items-center">
+                    <div className="py-1 px-2 flex flex-row items-center gap-2">
                         {isStreaming ? (
                             <>
                                 <RefreshCwIcon className="h-4 w-4 animate-spin mr-2" />
@@ -370,12 +521,35 @@ const PanelGroup = ({
                                 )}
                             </>
                         )}
+
+                        {/* Sort By dropdown */}
+                        <div className="ml-auto flex items-center gap-1.5">
+                            {isReranking && (
+                                <RefreshCwIcon className="h-3 w-3 animate-spin text-muted-foreground" />
+                            )}
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Sort by:</span>
+                            <Select
+                                value={sortBy}
+                                onValueChange={(v) => onSortByChange(v as SortBy)}
+                            >
+                                <SelectTrigger className="h-7 text-xs w-[145px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(Object.entries(SORT_BY_LABELS) as [SortBy, string][]).map(([value, label]) => (
+                                        <SelectItem key={value} value={value} className="text-xs">
+                                            {label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                     <div className="flex-1 min-h-0">
-                        {filteredFileMatches.length > 0 ? (
+                        {rankedFiles.length > 0 ? (
                             <SearchResultsPanel
                                 ref={searchResultsPanelRef}
-                                fileMatches={filteredFileMatches}
+                                fileMatches={rankedFiles}
                                 onOpenFilePreview={(fileMatch, matchIndex) => {
                                     setSelectedMatchIndex(matchIndex ?? 0);
                                     setPreviewedFile(fileMatch);

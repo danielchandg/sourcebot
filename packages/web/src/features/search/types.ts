@@ -84,12 +84,18 @@ export const searchFileSchema = z.object({
 export type SearchResultFile = z.infer<typeof searchFileSchema>;
 export type SearchResultChunk = SearchResultFile["chunks"][number];
 
+export const SORT_BY_VALUES = ['default', 'bm25', 'github-popularity', 'pagerank', 'llm'] as const;
+export type SortBy = typeof SORT_BY_VALUES[number];
+
+export const sortBySchema = z.enum(SORT_BY_VALUES).default('default');
+
 export const searchOptionsSchema = z.object({
     matches: z.number(),                              // The number of matches to return.
     contextLines: z.number().optional(),              // The number of context lines to return.
     whole: z.boolean().optional(),                    // Whether to return the whole file as part of the response.
     isRegexEnabled: z.boolean().optional(),           // Whether to enable regular expression search.
     isCaseSensitivityEnabled: z.boolean().optional(), // Whether to enable case sensitivity.
+    sortBy: sortBySchema.optional(),                  // The sort method to use for search results.
 });
 export type SearchOptions = z.infer<typeof searchOptionsSchema>;
 

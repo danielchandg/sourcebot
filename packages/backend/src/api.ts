@@ -8,6 +8,7 @@ import { AccountPermissionSyncer } from './ee/accountPermissionSyncer.js';
 import { PromClient } from './promClient.js';
 import { RepoIndexManager } from './repoIndexManager.js';
 import { createGitHubRepoRecord } from './repoCompileUtils.js';
+import { computeAndStoreCodeRank } from './codeRank.js';
 import { Octokit } from '@octokit/rest';
 import { SINGLE_TENANT_ORG_ID } from './constants.js';
 import z from 'zod';
@@ -39,6 +40,7 @@ export class Api {
         app.post('/api/sync-connection', this.syncConnection.bind(this));
         app.post('/api/index-repo', this.indexRepo.bind(this));
         app.post('/api/trigger-account-permission-sync', this.triggerAccountPermissionSync.bind(this));
+        app.post('/api/compute-coderank', this.computeCodeRank.bind(this));
         app.post(`/api/experimental/add-github-repo`, this.experimental_addGithubRepo.bind(this));
 
         this.server = app.listen(PORT, () => {
@@ -173,6 +175,14 @@ export class Api {
         const [jobId ] = await this.repoIndexManager.createJobs([repo], RepoIndexingJobType.INDEX);
 
         res.status(200).json({ jobId, repoId: repo.id });
+    }
+
+    private async computeCodeRank(_req: Request, res: Response) {
+        // Fire and forget — computation can take a while for large repos
+        computeAndStoreCodeRank(this.prisma).catch((err) => {
+            logger.error('CodeRank computation failed:', err);
+        });
+        res.status(202).json({ message: 'CodeRank computation started.' });
     }
 
     public async dispose() {

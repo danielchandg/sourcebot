@@ -11,6 +11,7 @@ export enum SearchQueryParams {
     matches = "matches",
     isRegexEnabled = "isRegexEnabled",
     isCaseSensitivityEnabled = "isCaseSensitivityEnabled",
+    sortBy = "sortBy",
 }
 
 export type ApiKeyPayload = {
