@@ -21,7 +21,6 @@ import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { SearchQueryParams } from "@/lib/types";
 import { createPathWithQueryParams } from "@/lib/utils";
 import { InfoCircledIcon } from "@radix-ui/react-icons";
-import { useLocalStorage } from "@uidotdev/usehooks";
 import { AlertTriangleIcon, BugIcon, FilterIcon, RefreshCwIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -85,7 +84,7 @@ export const SearchResultsPage = ({
         isRegexEnabled,
         isCaseSensitivityEnabled,
         // BM25 is applied at the Zoekt level; other sorts are post-processed client-side
-        sortBy: sortBy === 'bm25' ? 'bm25' : 'default',
+        sortBy: sortBy === 'bm25' || sortBy === 'bm25-fqn-coderank' ? 'bm25' : 'default',
     });
 
     useEffect(() => {
@@ -235,6 +234,15 @@ export const SearchResultsPage = ({
 }
 
 
+
+// Min-max normalize an array of numbers to [0, 1].
+const normalize = (values: number[]): number[] => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max === min) return values.map(() => 0);
+    return values.map(v => (v - min) / (max - min));
+};
+
 interface PanelGroupProps {
     fileMatches: SearchResultFile[];
     onLoadMoreResults: () => void;
@@ -253,9 +261,10 @@ interface PanelGroupProps {
 const SORT_BY_LABELS: Record<SortBy, string> = {
     'default': 'Default',
     'bm25': 'BM25',
-    'github-popularity': 'GitHub Popularity',
-    'pagerank': 'PageRank',
-    'llm': 'LLM Reranking',
+    'pagerank': 'CodeRank',
+    'fqn': 'FQN',
+    'fqn-coderank': 'FQN + CodeRank',
+    'bm25-fqn-coderank': 'BM25 + FQN + CodeRank',
 };
 
 const PanelGroup = ({
@@ -277,7 +286,13 @@ const PanelGroup = ({
     const filterPanelRef = useRef<ImperativePanelHandle>(null);
     const searchResultsPanelRef = useRef<SearchResultsPanelHandle>(null);
     const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
-    const [isFilterPanelCollapsed, setIsFilterPanelCollapsed] = useLocalStorage('isFilterPanelCollapsed', false);
+    const [isFilterPanelCollapsed, setIsFilterPanelCollapsed] = useState<boolean>(() => {
+        if (typeof window === 'undefined') return false;
+        try { return JSON.parse(localStorage.getItem('isFilterPanelCollapsed') ?? 'false'); } catch { return false; }
+    });
+    useEffect(() => {
+        try { localStorage.setItem('isFilterPanelCollapsed', JSON.stringify(isFilterPanelCollapsed)); } catch {}
+    }, [isFilterPanelCollapsed]);
 
     // State for post-processed (reranked) results
     const [rankedFiles, setRankedFiles] = useState<SearchResultFile[]>([]);
@@ -332,17 +347,54 @@ const PanelGroup = ({
         }
 
         const abortController = new AbortController();
+        const signal = abortController.signal;
 
-        if (sortBy === 'pagerank') {
+        const fetchCodeRankScores = () => fetch('/api/coderank_scores', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: files.map(f => ({ repoId: f.repositoryId, filePath: f.fileName.text })) }),
+            signal,
+        }).then(r => r.json() as Promise<Record<string, number>>);
+
+        // Runs a Zoekt symbol search and returns the set of files ("repoId:fileName")
+        // that have a ctags symbol definition matching the query.
+        const fetchSymbolMatches = () => fetch('/api/symbol_search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: searchQuery }),
+            signal,
+        }).then(r => {
+            if (!r.ok) {
+                console.error('[FQN debug] symbol_search API error:', r.status, r.statusText);
+                return [];
+            }
+            return r.json() as Promise<Array<{ repositoryId: number; fileName: string }>>;
+        }).then(matches => new Set((matches as Array<{ repositoryId: number; fileName: string }>).map(m => `${m.repositoryId}:${m.fileName}`)));
+
+        const getFqnScore = (f: SearchResultFile, symbolSet: Set<string>): number =>
+            symbolSet.has(`${f.repositoryId}:${f.fileName.text}`) ? 1 : 0;
+
+        if (sortBy === 'fqn') {
+            setIsReranking(true);
+            fetchSymbolMatches()
+                .then(symbolSet => {
+                    console.log('[FQN debug] query:', searchQuery);
+                    console.log('[FQN debug] symbol matches:', symbolSet.size, [...symbolSet].slice(0, 10));
+                    const scored = files.map(f => ({
+                        file: f.fileName.text,
+                        repository: f.repository,
+                        fqnScore: getFqnScore(f, symbolSet),
+                    }));
+                    console.log('[FQN debug] results:', scored.sort((a, b) => b.fqnScore - a.fqnScore));
+                    const sorted = [...files].sort((a, b) => getFqnScore(b, symbolSet) - getFqnScore(a, symbolSet));
+                    setRankedFiles(sorted);
+                })
+                .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
+                .finally(() => setIsReranking(false));
+        } else if (sortBy === 'pagerank') {
             setIsReranking(true);
 
-            fetch('/api/coderank_scores', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ files: files.map(f => ({ repoId: f.repositoryId, filePath: f.fileName.text })) }),
-                signal: abortController.signal,
-            })
-                .then(r => r.json() as Promise<Record<string, number>>)
+            fetchCodeRankScores()
                 .then(scoreMap => {
                     const sorted = [...files].sort((a, b) => {
                         const aScore = scoreMap[`${a.repositoryId}:${a.fileName.text}`] ?? 0;
@@ -353,54 +405,41 @@ const PanelGroup = ({
                 })
                 .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
                 .finally(() => setIsReranking(false));
-        } else if (sortBy === 'github-popularity') {
-            const uniqueRepos = [...new Set(files.map(f => f.repository))];
+        } else if (sortBy === 'fqn-coderank') {
             setIsReranking(true);
 
-            fetch('/api/repo_stars', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ repoNames: uniqueRepos }),
-                signal: abortController.signal,
-            })
-                .then(r => r.json() as Promise<Record<string, { stars: number; forks: number }>>)
-                .then(starMap => {
-                    const sorted = [...files].sort((a, b) => {
-                        const aStars = starMap[a.repository]?.stars ?? 0;
-                        const bStars = starMap[b.repository]?.stars ?? 0;
-                        if (bStars !== aStars) return bStars - aStars;
-                        const aMatches = a.chunks.reduce((s, c) => s + c.matchRanges.length, 0);
-                        const bMatches = b.chunks.reduce((s, c) => s + c.matchRanges.length, 0);
-                        return bMatches - aMatches;
-                    });
+            Promise.all([fetchSymbolMatches(), fetchCodeRankScores()])
+                .then(([symbolSet, scoreMap]) => {
+                    const fqnScores = files.map(f => getFqnScore(f, symbolSet));
+                    const crScores = files.map(f => scoreMap[`${f.repositoryId}:${f.fileName.text}`] ?? 0);
+                    const normFqn = normalize(fqnScores);
+                    const normCr = normalize(crScores);
+                    const sorted = [...files]
+                        .map((f, i) => ({ f, score: normFqn[i] + normCr[i] }))
+                        .sort((a, b) => b.score - a.score)
+                        .map(({ f }) => f);
                     setRankedFiles(sorted);
                 })
                 .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
                 .finally(() => setIsReranking(false));
-        } else if (sortBy === 'llm') {
-            const TOP_K = 20;
-            const topFiles = files.slice(0, TOP_K);
-            const restFiles = files.slice(TOP_K);
-
+        } else if (sortBy === 'bm25-fqn-coderank') {
             setIsReranking(true);
 
-            const snippets = topFiles.map(f => ({
-                repository: f.repository,
-                fileName: f.fileName.text,
-                language: f.language,
-                snippet: f.chunks[0]?.content ?? '',
-            }));
-
-            fetch('/api/rerank', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: searchQuery, files: snippets }),
-                signal: abortController.signal,
-            })
-                .then(r => r.json() as Promise<{ rankedIndices: number[] }>)
-                .then(({ rankedIndices }) => {
-                    const reranked = rankedIndices.map(i => topFiles[i]);
-                    setRankedFiles([...reranked, ...restFiles]);
+            Promise.all([fetchSymbolMatches(), fetchCodeRankScores()])
+                .then(([symbolSet, scoreMap]) => {
+                    const N = files.length;
+                    // BM25 proxy: files are already ordered by Zoekt's BM25; use rank position.
+                    const bm25Scores = files.map((_, i) => 1 - i / Math.max(N - 1, 1));
+                    const fqnScores = files.map(f => getFqnScore(f, symbolSet));
+                    const crScores = files.map(f => scoreMap[`${f.repositoryId}:${f.fileName.text}`] ?? 0);
+                    const normBm25 = normalize(bm25Scores);
+                    const normFqn = normalize(fqnScores);
+                    const normCr = normalize(crScores);
+                    const sorted = [...files]
+                        .map((f, i) => ({ f, score: normBm25[i] + normFqn[i] + normCr[i] }))
+                        .sort((a, b) => b.score - a.score)
+                        .map(({ f }) => f);
+                    setRankedFiles(sorted);
                 })
                 .catch((err) => { if (err.name !== 'AbortError') setRankedFiles(files); })
                 .finally(() => setIsReranking(false));

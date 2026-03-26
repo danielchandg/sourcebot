@@ -84,7 +84,7 @@ export const searchFileSchema = z.object({
 export type SearchResultFile = z.infer<typeof searchFileSchema>;
 export type SearchResultChunk = SearchResultFile["chunks"][number];
 
-export const SORT_BY_VALUES = ['default', 'bm25', 'github-popularity', 'pagerank', 'llm'] as const;
+export const SORT_BY_VALUES = ['default', 'bm25', 'pagerank', 'fqn', 'fqn-coderank', 'bm25-fqn-coderank'] as const;
 export type SortBy = typeof SORT_BY_VALUES[number];
 
 export const sortBySchema = z.enum(SORT_BY_VALUES).default('default');
