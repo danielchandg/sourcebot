@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"find_definitions\\\\|find_references\" /Users/danielchang/Desktop/sourcebot/packages/web/src/app/api -type f ! -path \"*/.next/*\")"
+    ]
+  }
+}

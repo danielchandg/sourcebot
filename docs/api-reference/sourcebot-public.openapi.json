@@ -428,6 +428,18 @@
           },
           "isCaseSensitivityEnabled": {
             "type": "boolean"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "default",
+              "bm25",
+              "pagerank",
+              "fqn",
+              "fqn-coderank",
+              "bm25-fqn-coderank"
+            ],
+            "default": "default"
           }
         },
         "required": [
