@@ -322,7 +322,7 @@ I only want to do
 
 # Queries
 
-## GomoryHu
+## 1. GomoryHu
 31 results
 ### Top N results
 - Stonefeang/librewoosh Gomory_Hu.cpp
@@ -339,7 +339,7 @@ I only want to do
 - 1: KacperTopolski, ahsoltan, any stress test, cuber2460, fishy15 (GlobalMinCut.h), kactl (GlobalMinCut.h), OmeletWithoutEgg, dnx04
 - 0: anything else
 
-## Gaussian elimination
+## 2. Gaussian elimination
 21 results
 ### Top N results
 - 12tqian matrix2.hpp
@@ -356,7 +356,7 @@ I only want to do
 - 1: 12tqian (matrix.hpp), bqi343 (Xorbasis.h), maksim, p1k4-piyush, the-tourist (sparsematrix.cpp), wesley-a-leung (GaussianElimination.h), null-lambda (p_rec.rs)
 - 0: anything else
 
-## Hungarian
+## 3. Hungarian
 62 results
 ### Top N results
 - Stonefeang
@@ -373,7 +373,7 @@ I only want to do
 - 1: kactl dupes, test files, cuber2460, ecnerwala old_template, fishy15, oldyan, Misuki743
 - 0: anything else
 
-## Prime counting
+## 4. Prime counting
 Here is the search query:
 `"count_primes" or "counting-primes" or "counting_primes" or "counting primes" or "countingprimes" or "primecnt" or "primecount" or "prime_cnt" or "lehmer" or "primefunction" or "primesum" or "min25" or "prime_count"`
 
@@ -395,7 +395,7 @@ Here is the search query:
 - 1: any not-sublinear algorithms, sieves, test files
 - 0: anything else
 
-## LiChao
+## 5. LiChao
 131 results
 ### Top N results
 - KacperTopolski
@@ -410,14 +410,173 @@ Here is the search query:
 - 1: cp-algorithms, maspypy (Extended LiChao Tree), oldyan
 - 0: anything else
 
-## beats
-33 results
+## 6. Knapsack
+108 results
 ### Top N results
-- a
-- b
+- kactl
+- Kuro-orzz
+- ShahjalalShohag
+- biblioteca
+- hitonanode
+- iagorrr
+- wesley-a-leung
+- bqi343
 
-# NCDG ranking
-- 3: 
-- 2: Hegdahl
-- 1: any test/solution files
-- 0: 
+### NDCG ranking
+- 3: any knapsack implementations
+- 2: other knapsack-related problems
+- 1: non-code files, test files, unrelated algorithms
+- 0: anything else
+
+## 7. prime factorization
+79 results
+### Top N results
+- ei1333
+- ningenMe
+- wery0
+- kactl
+- dacin12
+- glapul
+
+### NDCG ranking
+- 3: n^{1/4}, any Pollard Rho
+- 2: any file that imports other files, n^{1/2}
+- 1: not prime factorization, vipplovve, testfiles
+- 0: anything else
+
+# Results
+
+## Default
+
+Recall@10
+- GomoryHu: 3/7
+  - positions: 1, 5, 9, 12, 18, 19, 23
+- Gaussian elimination: 2/10
+  - positions: 2, 6, 11, 13, 23, 24, 25, 26, 27, 31
+- Hungarian: 0/7
+  - positions: 11, 15, 32, 33, 54, 60, 61
+- prime counting: 1/9
+  - positions: 9, 19, 28, 33, 46, 57, 60, 76, 85
+- LiChao: 1/4
+  - positions: 5, 26, 41, 127
+- knapsack: 2/9
+  - 4, 10, 12, 13, 20, 42, 44, 71, 103
+- prime factorization: 1/6
+  - positions: 5, 33, 34, 48, 61, 75
+
+NDCG@10
+- GomoryHu: 2, 0, 1, 1, 3, 2, 0, 1, 3, 1
+- Gaussian elimination: 1, 3, 2, 0, 0, 3, 2, 1, 1, 2
+- Hungarian: 2, 0, 0, 2, 3, 0, 1, 0, 2, 3
+- prime counting: 2, 0, 0, 2, 2, 3, 0, 3, 0, 0
+- LiChao: 2, 0, 2, 2, 3, 2, 0, 0, 2, 1
+- knapsack: 1, 1, 0, 3, 2, 2, 2, 0, 3, 3
+- prime factorization: 1, 3, 0, 0, 3, 0, 2, 3, 2, 3
+
+## BM25
+
+Recall@10
+- GomoryHu: 2/7
+  - positions: 1, 5, 9, 13, 19, 20, 23
+- Gaussian elimination: 2/10
+  - positions: 1, 6, 11, 14, 23, 24, 25, 27, 28, 31
+- Hungarian: 0/7
+  - positions: 11, 15, 30, 33, 50, 61, 62
+- prime counting: 1/9
+  - positions: 10, 20, 28, 33, 46, 51, 61, 77, 81
+- LiChao: 1/7
+  - positions: 5, 20, 41, 111
+- knapsack: 2/9
+  - positions: 8, 10, 12, 17, 25, 29, 42, 71, 101
+- prime factorization: 1/6
+  - positions: 5, 34, 39, 44, 62, 78
+
+NDCG@10
+- GomoryHu: 2, 1, 0, 1, 3, 2, 0, 1, 3, 1
+- Gaussian elimination: 3, 1, 0, 2, 0, 3, 2, 1, 1, 2
+- Hungarian: 2, 0, 0, 2, 3, 0, 2, 1, 0, 3
+- prime counting: 0, 2, 0, 3, 2, 2, 0, 0, 0, 3
+- LiChao: 2, 0, 2, 2, 3, 2, 0, 0, 2, 0
+- knapsack: 1, 1, 0, 2, 2, 0, 2, 3, 2, 3
+- prime factorization: 3, 0, 0, 1, 0, 3, 2, 3, 2, 2
+
+## FQN
+
+Recall@10
+- GomoryHu: 5/7
+  - positions: 1, 3, 5, 7, 10, 11, 13
+- Gaussian elimination: 6/10
+  - positions: 2, 5, 6, 7, 8, 9, 13, 15, 21, 23
+- Hungarian: 2/7
+  - positions: 7, 9, 18, 20, 29, 34, 35
+- prime counting: 1/9
+  - positions: 6, 12, 16, 18, 26, 29, 41, 46, 76
+- LiChao: 3/7
+  - positions: 4, 16, 21, 65
+- knapsack: 3/9
+  - positions: 2, 7, 8, 11, 13, 20, 22, 45, 59
+- prime factorization: 2/6
+  - positions: 4, 8, 11, 15, 41, 49
+
+NDCG@10
+- GomoryHu: 2, 1, 3, 2, 3, 1, 1, 2, 2, 3
+- Gaussian elimination: 2, 3, 2, 1, 3, 3, 3, 3, 3, 3
+- Hungarian: 2, 2, 3, 2, 1, 3, 3, 3, 2, 1
+- prime counting: 2, 2, 2, 3, 0, 3, 2, 3, 3, 3
+- LiChao: 2, 2, 2, 3, 1, 2, 2, 3, 3, 3
+- knapsack: 0, 3, 2, 2, 2, 2, 3, 3, 3, 3
+- prime factorization: 3, 2, 2, 3, 2, 2, 1, 3, 2, 1
+
+## FQN + CodeRank
+
+Recall@10
+- GomoryHu: 5/7
+  - positions: 1, 3, 5, 8, 10, 11, 13
+- Gaussian elimination: 6/10
+  - positions: 2, 5, 6, 7, 8, 9, 13, 15, 20, 23
+- Hungarian: 2/7
+  - positions: 7, 8, 17, 19, 33, 34, 35
+- prime counting: 1/9
+  - positions: 6, 12, 15, 18, 26, 29, 41, 46, 75
+- LiChao: 2/7
+  - positions: 4, 16, 21, 61
+- knapsack: 4/9
+  - positions: 2, 7, 8, 10, 13, 20, 22, 45, 59
+- prime factorization: 2/6
+  - positions: 4, 8, 11, 15, 41, 49
+
+NDCG@10
+- GomoryHu: 2, 1, 3, 3, 1, 1, 1, 2, 3, 2
+- Gaussian elimination: 2, 3, 2, 1, 3, 3, 3, 3, 3, 3
+- Hungarian: 2, 2, 3, 2, 1, 3, 3, 3, 3, 2
+- prime counting: 2, 2, 2, 3, 0, 3, 2, 2, 1, 3
+- LiChao: 2, 2, 2, 3, 1, 2, 2, 3, 3, 2
+- knapsack: 0, 3, 2, 2, 2, 2, 3, 3, 3, 3
+- prime factorization: 3, 2, 2, 3, 2, 2, 2, 3, 2, 1
+
+## BM25 + FQN + CodeRank
+
+Recall@10
+- GomoryHu: 5/7
+  - positions: 1, 3, 4, 7, 10, 11, 13
+- Gaussian elimination: 5/10
+  - positions: 2, 5, 6, 9, 10, 12, 13, 14, 21, 23
+- Hungarian: 2/7
+  - positions: 6, 8, 18, 20, 29, 34, 35
+- prime counting: 2/9
+  - positions: 6, 8, 15, 18, 26, 31, 40, 47, 78
+- LiChao: 3/7
+  - positions: 4, 16, 22, 61
+- knapsack: 3/8
+  - positions: 5, 7, 8, 10, 13, 20, 22, 45, 60
+- prime factorization: 2/6
+  - positions: 4, 8, 11, 15, 41, 49
+
+NDCG@10
+- GomoryHu: 2, 1, 3, 2, 3, 1, 1, 2, 2, 3
+- Gaussian elimination: 2, 3, 2, 1, 3, 3, 3, 3, 3, 3
+- Hungarian: 2, 2, 3, 1, 2, 3, 3, 3, 3, 2
+- prime counting: 2, 3, 2, 2, 0, 3, 2, 2, 1, 3
+- LiChao: 2, 2, 2, 3, 2, 1, 2, 3, 2, 3
+- knapsack: 2, 2, 0, 2, 3, 2, 3, 3, 3, 3
+- prime factorization: 3, 2, 2, 3, 2, 2, 2, 3, 3, 1
