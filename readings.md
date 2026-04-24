@@ -444,6 +444,46 @@ Here is the search query:
 - 1: not prime factorization, vipplovve, testfiles
 - 0: anything else
 
+## 8. min
+### Top N results
+- yokoyama-midori template.hpp
+- shogo314/cpp_include more_functional.hpp
+- maspypy/library monoid/min.hpp
+- MtSaka/library monoid.hpp
+- ZOI-dayo/atcoder-library util.hpp
+- anqooqie monoids.hpp
+- shogo314/cpp_include utility.hpp
+
+### Q8 Positions
+- Default: 246 (MtSaka), 683 (ZOI-dayo), 798 (anqooqie), 2162 (maspypy), 4001 (shogo utility.hpp), 3961 (shogo more_functional.hpp), 5110 (yokoyama-midori)
+- BM25: 286, 687, 841, 2145, 3968, 4166, 5081
+- CodeRank: 2, 49, 53, 63, 80, 90, 150
+- FQN: 246, 724, 784, 2046, 3961, 4001, 5110
+- FQN + CodeRank: 86 (yokoyama), 133 (maspypy), 137 (MtSaka), 147 (ZOI-dayo), 163 (anqooqie), 173 (shogo more_functional), 232 (shogo utility)
+- BM25 + FQN + CodeRank: 129 (MtSaka), 539 (ZOI-dayo), 692 (anqooqie), 2135 (maspypy), 4095 (shogo utility), 4346, 5022
+
+
+## CodeRank Positions
+
+- Q1: 4, 8, 17, 21, 24, 31, 34
+- Q2: 4, 6, 12, 13, 22, 23, 26, 27, 28, 29
+- Q3: 7, 21, 33, 41, 57, 62, 63
+- Q4: 1, 6, 15, 20, 42, 52, 60, 80, 84
+- Q5: 34, 46, 51, 60, 126
+- Q6: 6, 37, 41, 46, 48, 58, 60, 95
+- Q7: 4, 6, 19, 47, 54, 76
+- Q8: 2, 49, 53, 63, 80, 90, 150
+
+## Total number of search results
+- Q1: 23
+- Q2: 32
+- Q3: 63
+- Q4: 84
+- Q5: 131
+- Q6: 109
+- Q7: 79
+- Q8: 5234
+
 # Results
 
 ## Default
@@ -511,7 +551,7 @@ Recall@10
   - positions: 7, 9, 18, 20, 29, 34, 35
 - prime counting: 1/9
   - positions: 6, 12, 16, 18, 26, 29, 41, 46, 76
-- LiChao: 3/7
+- LiChao: 1/4
   - positions: 4, 16, 21, 65
 - knapsack: 3/9
   - positions: 2, 7, 8, 11, 13, 20, 22, 45, 59
@@ -580,3 +620,64 @@ NDCG@10
 - LiChao: 2, 2, 2, 3, 2, 1, 2, 3, 2, 3
 - knapsack: 2, 2, 0, 2, 3, 2, 3, 3, 3, 3
 - prime factorization: 3, 2, 2, 3, 2, 2, 2, 3, 3, 1
+
+
+
+
+
+# Results
+
+## Default
+
+positions
+- Q1: 1, 5, 9, 12, 18, 19, 23
+- Q2: 2, 6, 11, 13, 23, 24, 25, 26, 27, 31
+- Q3: 11, 15, 32, 33, 54, 60, 61
+- Q4: 9, 19, 28, 33, 46, 57, 60, 76, 85
+- Q5: 5, 26, 41, 127
+- Q6: 4, 10, 12, 13, 20, 42, 44, 71, 103
+- Q7: 5, 33, 34, 48, 61, 75
+
+## BM25
+
+positions
+- Q1: 1, 5, 9, 13, 19, 20, 23
+- Q2: 1, 6, 11, 14, 23, 24, 25, 27, 28, 31
+- Q3: 11, 15, 30, 33, 50, 61, 62
+- Q4: 10, 20, 28, 33, 46, 51, 61, 77, 81
+- Q5: 5, 20, 41, 111
+- Q6: 8, 10, 12, 17, 25, 29, 42, 71, 101
+- Q7: 5, 34, 39, 44, 62, 78
+
+## FQN
+
+positions
+- Q1: 1, 3, 5, 7, 10, 11, 13
+- Q2: 2, 5, 6, 7, 8, 9, 13, 15, 21, 23
+- Q3: 7, 9, 18, 20, 29, 34, 35
+- Q4: 6, 12, 16, 18, 26, 29, 41, 46, 76
+- Q5: 4, 16, 21, 65
+- Q6: 2, 7, 8, 11, 13, 20, 22, 45, 59
+- Q7: 4, 8, 11, 15, 41, 49
+
+## FQN + CodeRank
+
+positions
+- Q1: 1, 3, 5, 8, 10, 11, 13
+- Q2: 2, 5, 6, 7, 8, 9, 13, 15, 20, 23
+- Q3: 7, 8, 17, 19, 33, 34, 35
+- Q4: 6, 12, 15, 18, 26, 29, 41, 46, 75
+- Q5: 4, 16, 21, 61
+- Q6: 2, 7, 8, 10, 13, 20, 22, 45, 59
+- Q7: 4, 8, 11, 15, 41, 49
+
+## BM25 + FQN + CodeRank
+
+positions
+- Q1: 1, 3, 4, 7, 10, 11, 13
+- Q2: 2, 5, 6, 9, 10, 12, 13, 14, 21, 23
+- Q3: 6, 8, 18, 20, 29, 34, 35
+- Q4: 6, 8, 15, 18, 26, 31, 40, 47, 78
+- Q5: 4, 16, 22, 61
+- Q6: 5, 7, 8, 10, 13, 20, 22, 45, 60
+- Q7: 4, 8, 11, 15, 41, 49

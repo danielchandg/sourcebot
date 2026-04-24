@@ -1,4 +1,4 @@
-import { PrismaClient } from '@sourcebot/db';
+import { PrismaClient, Repo } from '@sourcebot/db';
 import { createLogger, getRepoPath } from '@sourcebot/shared';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -42,10 +42,11 @@ const EXTENSION_TO_LANGUAGE: Record<string, Language> = {
 
 // ---- Import extraction regexes ----
 
-// #include "foo.h" or #import "foo.h" (quoted only — angle-bracket includes are system headers)
+// #include "foo.h"
+// #import "foo.h"
 const C_INCLUDE_RE = /^\s*#\s*(?:include|import)\s+"([^"]+)"/gm;
 
-// import ... from './foo'  or  import './foo'
+// import X from './foo'
 const JS_FROM_RE = /\bfrom\s+['"](\.[^'"]+)['"]/gm;
 // require('./foo')
 const JS_REQUIRE_RE = /\brequire\s*\(\s*['"](\.[^'"]+)['"]\s*\)/gm;
@@ -55,51 +56,48 @@ const JS_DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*['"](\.[^'"]+)['"]\s*\)/gm;
 // import com.example.Foo;
 const JAVA_IMPORT_RE = /^\s*import\s+([\w.]+)\s*;/gm;
 
-// from .foo import bar  /  from ..models import User
-// Only relative imports; absolute imports require knowing the package root.
+// from .foo import bar
+// from ..models import User
 const PYTHON_RELATIVE_RE = /^\s*from\s+(\.+\w*(?:\.\w+)*)\s+import/gm;
 
-// mod foo;  or  pub mod foo;
-// 'use' statements reference module paths, not file paths, so we skip them.
+// mod foo;
+// pub mod foo;
 const RUST_MOD_RE = /^\s*(?:pub\s+)?mod\s+(\w+)\s*;/gm;
 
 // import com.example.Foo
 const KOTLIN_IMPORT_RE = /^\s*import\s+([\w.]+)/gm;
 
+// Extract all import strings from a file's content based on its language
 function extractImports(content: string, language: Language): string[] {
     const results: string[] = [];
-
     const collect = (re: RegExp) => {
-        // Reset lastIndex since regexes are module-level constants with the /g flag.
         re.lastIndex = 0;
         for (const match of content.matchAll(re)) {
             results.push(match[1]);
         }
     };
-
     switch (language) {
         case 'c-family':
-            collect(C_INCLUDE_RE);
+            collect(C_INCLUDE_RE); // #include "foo.h", import "foo.h"
             break;
         case 'js-family':
-            collect(JS_FROM_RE);
-            collect(JS_REQUIRE_RE);
-            collect(JS_DYNAMIC_IMPORT_RE);
+            collect(JS_FROM_RE); // import X from "foo"
+            collect(JS_REQUIRE_RE); // require('./foo')
+            collect(JS_DYNAMIC_IMPORT_RE); // import('./foo')
             break;
         case 'java':
-            collect(JAVA_IMPORT_RE);
+            collect(JAVA_IMPORT_RE); // import com.example.Foo;
             break;
         case 'python':
-            collect(PYTHON_RELATIVE_RE);
+            collect(PYTHON_RELATIVE_RE); // from .foo import bar
             break;
         case 'rust':
-            collect(RUST_MOD_RE);
+            collect(RUST_MOD_RE); // mod foo;
             break;
         case 'kotlin':
-            collect(KOTLIN_IMPORT_RE);
+            collect(KOTLIN_IMPORT_RE); // import com.example.Foo
             break;
     }
-
     return results;
 }
 
@@ -141,22 +139,20 @@ function resolveCFamily(importStr: string, sourceFile: string, allFiles: Set<str
 
 const JS_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
+// Given an import string, try to match it to a file in the repo
 function resolveJsFamily(importStr: string, sourceFile: string, allFiles: Set<string>): string | null {
-    // Only relative imports are resolvable without a bundler/tsconfig
-    if (!importStr.startsWith('.')) return null;
-
     const base = path.join(path.dirname(sourceFile), importStr);
 
-    // 1. Exact match (e.g. already has extension)
+    // 1. Try exact match (import './foo.js' -> foo.js)
     if (allFiles.has(base)) return base;
 
-    // 2. Try appending each extension
+    // 2. Try appending each extension (import './foo' -> foo.js)
     for (const ext of JS_EXTENSIONS) {
         const candidate = base + ext;
         if (allFiles.has(candidate)) return candidate;
     }
 
-    // 3. Try index file inside a directory
+    // 3. Try index file inside a directory (import './foo' -> foo/index.js)
     for (const ext of JS_EXTENSIONS) {
         const candidate = path.join(base, 'index') + ext;
         if (allFiles.has(candidate)) return candidate;
@@ -192,8 +188,8 @@ function resolvePython(importStr: string, sourceFile: string, allFiles: Set<stri
     // foo.bar  →  foo/bar.py  (handle dotted module paths too)
     const relPath = modulePart.replace(/\./g, '/');
 
-    const fileCandiate = path.join(baseDir, relPath + '.py');
-    if (allFiles.has(fileCandiate)) return fileCandiate;
+    const fileCandidate = path.join(baseDir, relPath + '.py');
+    if (allFiles.has(fileCandidate)) return fileCandidate;
 
     const packageCandidate = path.join(baseDir, relPath, '__init__.py');
     if (allFiles.has(packageCandidate)) return packageCandidate;
@@ -258,88 +254,86 @@ function computeCodeRank(edges: Map<string, string[]>): Map<string, number> {
 
 // ---- Main entry point ----
 
+/**
+ * Computes and stores CodeRank scores for all indexed repositories.
+ * @param prisma Zoekt database of indexed repositories
+ */
 export async function computeAndStoreCodeRank(prisma: PrismaClient): Promise<void> {
-    const existingCount = await prisma.fileCodeRankScore.count();
-    if (existingCount > 0) {
-        logger.info('CodeRank scores already exist, skipping. Truncate the fileCodeRankScore table to recompute.');
-        return;
-    }
 
-    const repos = await prisma.repo.findMany({
-        where: { indexedAt: { not: null } },
-    });
+    // 1. Delete existing scores
+    const deleted = await prisma.fileCodeRankScore.deleteMany({});
+    logger.info(`Cleared ${deleted.count} existing CodeRank scores.`);
 
-    if (repos.length === 0) {
-        logger.info('No indexed repos found, skipping CodeRank computation.');
-        return;
-    }
+    // 2. Fetch all indexed repos
+    const repos = await prisma.repo.findMany({ where: { indexedAt: { not: null } } });
+    logger.info(`Found ${repos.length} indexed repositories. Building import graph...`);
 
-    logger.info(`Computing CodeRank across ${repos.length} repos...`);
+    // 3. Build the import graph (File ID is `${repoId}:${filePath}`)
+    const edges = await buildImportGraph(repos);
+    logger.info(`Graph built: ${edges.size} nodes. Running PageRank...`);
 
-    // nodeId = `${repoId}:${filePath}` — unique across all repos
+    // 4. Run PageRank algorithm
+    const scores = computeCodeRank(edges);
+    logger.info(`CodeRank computed for ${scores.size} files. Storing results...`);
+
+    // 5. Persist scores to Postgres
+    await storeScores(prisma, scores);
+    logger.info('CodeRank computation complete.');
+}
+
+// Build import graph from the list of indexed repositories.
+async function buildImportGraph(repos: Repo[]): Promise<Map<string, string[]>> {
     const edges = new Map<string, string[]>();
 
     for (const repo of repos) {
-        const { path: repoPath } = getRepoPath(repo);
 
-        if (!existsSync(repoPath)) {
-            logger.warn(`Repo path not found for "${repo.name}" (${repoPath}), skipping.`);
-            continue;
-        }
+        // 1. Get list of tracked files in the repo
+        const files = await getFilesFromRepo(repo);
+        logger.info(`Processing "${repo.name}": ${files.size} files`);
+        const git = simpleGit(getRepoPath(repo).path);
 
-        const git = simpleGit(repoPath);
+        for (const file of files) {
 
-        let fileList: string[];
-        try {
-            const output = await git.raw(['ls-tree', '-r', '--name-only', 'HEAD']);
-            fileList = output.trim().split('\n').filter(Boolean);
-        } catch (err) {
-            logger.warn(`Failed to list files for "${repo.name}": ${err}`);
-            continue;
-        }
-
-        logger.info(`Processing "${repo.name}" — ${fileList.length} files`);
-
-        const allFiles = new Set(fileList);
-
-        // Register every supported file as a node, even those with no edges
-        for (const file of fileList) {
-            const lang = EXTENSION_TO_LANGUAGE[path.extname(file).toLowerCase()];
-            if (lang) {
-                edges.set(`${repo.id}:${file}`, []);
-            }
-        }
-
-        for (const file of fileList) {
+            // 2. Determine coding language from file extension
             const lang = EXTENSION_TO_LANGUAGE[path.extname(file).toLowerCase()];
             if (!lang) continue;
 
-            let content: string;
+            // 3. Extract imports and resolve to other files in the repo
+            const fileId = `${repo.id}:${file}`;
+            const resolved: string[] = [];
             try {
-                content = await git.raw(['show', `HEAD:${file}`]);
+                const content = await git.raw(['show', `HEAD:${file}`]);
+                for (const importStr of extractImports(content, lang)) {
+                    const target = resolveImport(importStr, file, lang, files);
+                    if (target) resolved.push(`${repo.id}:${target}`);
+                }
             } catch (err) {
                 logger.warn(`Failed to read "${file}" in "${repo.name}": ${err}`);
-                continue;
             }
-
-            const resolved: string[] = [];
-            for (const importStr of extractImports(content, lang)) {
-                const target = resolveImport(importStr, file, lang, allFiles);
-                if (target) {
-                    resolved.push(`${repo.id}:${target}`);
-                }
-            }
-
-            edges.set(`${repo.id}:${file}`, resolved);
+            edges.set(fileId, resolved);
         }
     }
+    return edges;
+}
 
-    logger.info(`Graph built: ${edges.size} nodes. Running PageRank...`);
+// Returns the set of tracked files at HEAD, or an empty set if the repo can't be read.
+async function getFilesFromRepo(repo: Repo): Promise<Set<string>> {
+    const { path: repoPath } = getRepoPath(repo);
+    if (!existsSync(repoPath)) {
+        logger.warn(`Repo path not found for "${repo.name}" (${repoPath}), skipping.`);
+        return new Set();
+    }
 
-    const scores = computeCodeRank(edges);
+    try {
+        const output = await simpleGit(repoPath).raw(['ls-tree', '-r', '--name-only', 'HEAD']);
+        return new Set(output.trim().split('\n').filter(Boolean));
+    } catch (err) {
+        logger.warn(`Failed to list files for "${repo.name}": ${err}`);
+        return new Set();
+    }
+}
 
-    logger.info(`PageRank done. Storing ${scores.size} scores...`);
-
+async function storeScores(prisma: PrismaClient, scores: Map<string, number>): Promise<void> {
     const records = [...scores.entries()].map(([nodeId, score]) => {
         const sep = nodeId.indexOf(':');
         return {
@@ -353,6 +347,5 @@ export async function computeAndStoreCodeRank(prisma: PrismaClient): Promise<voi
     for (let i = 0; i < records.length; i += BATCH_SIZE) {
         await prisma.fileCodeRankScore.createMany({ data: records.slice(i, i + BATCH_SIZE) });
     }
-
-    logger.info('CodeRank computation complete.');
+    logger.info(`Stored ${records.length} scores.`);
 }
